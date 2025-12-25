@@ -1,0 +1,18 @@
+services:
+  gitea-reporter:
+    image: gitea-reporter:latest
+    container_name: gitea-reporter
+    restart: always
+    # 使用 host 网络模式，方便访问本地代理或服务
+    network_mode: host
+    volumes:
+      # 挂载本地 .env 文件到容器中
+      - ./.env:/app/.env
+    environment:
+      # 显式指定从 .env 加载
+      - WEB_PORT=${WEB_PORT:-5000}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

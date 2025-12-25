@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gitea 日报生成器</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; background-color: #f4f6f8; color: #333; }
+        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; color: #2c3e50; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 1rem; }
+        button { background-color: #3498db; color: white; border: none; padding: 0.75rem 1.5rem; font-size: 1rem; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        button:hover { background-color: #2980b9; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        #output-area { margin-top: 2rem; display: none; }
+        textarea { width: 100%; height: 300px; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9rem; margin-bottom: 1rem; resize: vertical; }
+        .btn-secondary { background-color: #2ecc71; }
+        .btn-secondary:hover { background-color: #27ae60; }
+        .loader { display: none; margin-left: 10px; font-size: 0.9rem; color: #666; }
+        .error-message { display: none; background-color: #fee; color: #c33; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; border-left: 4px solid #c33; }
+        .error-message h3 { margin: 0 0 0.5rem 0; font-size: 1rem; }
+        .error-message p { margin: 0; font-size: 0.9rem; }
+        .error-icon { margin-right: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gitea 日报生成器</h1>
+
+        <div id="error-message" class="error-message">
+            <h3><span class="error-icon">❌</span>请求失败</h3>
+            <p id="error-text"></p>
+        </div>
+
+        <div class="form-group">
+            <label for="username">Gitea 用户名</label>
+            <input type="text" id="username" placeholder="输入用户名" onchange="saveToLocal('giteaUsername', this.value)">
+        </div>
+
+        <div class="form-group">
+            <label for="token">Gitea Token</label>
+            <input type="password" id="token" placeholder="输入 Personal Access Token" onchange="saveToLocal('giteaToken', this.value)">
+        </div>
+
+        <div class="form-group">
+            <label>报告类型</label>
+            <div style="display: flex; gap: 20px; margin-top: 5px;">
+                <label style="font-weight: normal; cursor: pointer;">
+                    <input type="radio" name="report_type" value="daily" checked onchange="saveToLocal('giteaReportType', 'daily')"> 日报
+                </label>
+                <label style="font-weight: normal; cursor: pointer;">
+                    <input type="radio" name="report_type" value="weekly" onchange="saveToLocal('giteaReportType', 'weekly')"> 周报
+                </label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="manual_input">今日工作补充 (可选)</label>
+            <textarea id="manual_input" placeholder="输入手动补充的工作内容，例如：开会、调研、文档编写等..." style="height: 100px;" onchange="saveToLocal('giteaManualInput', this.value)"></textarea>
+        </div>
+
+        <button id="generateBtn" onclick="generateReport()">生成日报</button>
+        <span id="loader" class="loader">⏳ 正在获取数据并生成 AI 总结...</span>
+
+        <div id="output-area">
+            <label for="result">生成结果</label>
+            <textarea id="result" readonly></textarea>
+            <button class="btn-secondary" onclick="copyToClipboard()">📋 复制到剪贴板</button>
+        </div>
+    </div>
+
+    <script>
+        function saveToLocal(key, value) {
+            localStorage.setItem(key, value);
+        }
+
+        // 页面加载时恢复保存的输入
+        window.addEventListener('DOMContentLoaded', function() {
+            const savedUsername = localStorage.getItem('giteaUsername');
+            const savedToken = localStorage.getItem('giteaToken');
+            const savedManualInput = localStorage.getItem('giteaManualInput');
+            const savedReportType = localStorage.getItem('giteaReportType');
+            
+            if (savedUsername) {
+                document.getElementById('username').value = savedUsername;
+            }
+            if (savedToken) {
+                document.getElementById('token').value = savedToken;
+            }
+            if (savedManualInput) {
+                document.getElementById('manual_input').value = savedManualInput;
+            }
+            if (savedReportType) {
+                const radio = document.querySelector(`input[name="report_type"][value="${savedReportType}"]`);
+                if (radio) radio.checked = true;
+            }
+        });
+
+        async function generateReport() {
+            const username = document.getElementById('username').value.trim();
+            const token = document.getElementById('token').value.trim();
+            const manualInput = document.getElementById('manual_input').value.trim();
+            const reportType = document.querySelector('input[name="report_type"]:checked').value;
+            const btn = document.getElementById('generateBtn');
+            const loader = document.getElementById('loader');
+            const outputArea = document.getElementById('output-area');
+            const resultBox = document.getElementById('result');
+            const errorMessage = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+
+            if (!username || !token) {
+                errorText.textContent = '请填写用户名和Token';
+                errorMessage.style.display = 'block';
+                return;
+            }
+
+            // 再次确保保存最新的输入
+            saveToLocal('giteaUsername', username);
+            saveToLocal('giteaToken', token);
+            saveToLocal('giteaManualInput', manualInput);
+            saveToLocal('giteaReportType', reportType);
+
+            // UI Loading State
+            btn.disabled = true;
+            loader.style.display = 'inline';
+            outputArea.style.display = 'none';
+            errorMessage.style.display = 'none';
+            resultBox.value = '';
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, token, manual_input: manualInput, report_type: reportType })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    errorText.textContent = data.error || '请求失败';
+                    errorMessage.style.display = 'block';
+                    return;
+                }
+
+                resultBox.value = data.summary;
+                outputArea.style.display = 'block';
+
+            } catch (err) {
+                errorText.textContent = '网络请求失败，请检查网络连接或稍后再试';
+                errorMessage.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                loader.style.display = 'none';
+            }
+        }
+
+        function copyToClipboard() {
+            const copyText = document.getElementById("result");
+            copyText.select();
+            copyText.setSelectionRange(0, 99999); // For mobile devices
+            
+            try {
+                navigator.clipboard.writeText(copyText.value).then(() => {
+                    alert("已复制到剪贴板!");
+                });
+            } catch (err) {
+                document.execCommand('copy');
+                alert("已复制到剪贴板!");
+            }
+        }
+    </script>
+</body>
+</html>
