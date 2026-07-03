@@ -28,13 +28,24 @@ def index():
 @app.route('/api/generate', methods=['POST'])
 def generate():
     data = request.json
+    # Gitea 配置：优先用前端传入，回退到服务端 .env
+    gitea_url = data.get('gitea_url') or GITEA_URL
     token = data.get('token')
     username = data.get('username')
     manual_input = data.get('manual_input', '')
     report_type_key = data.get('report_type', 'daily')
+
+    # AI 配置：优先用前端传入，回退到服务端 .env
+    ai_config = data.get('ai_config', {}) or {}
+    ai_api_key = ai_config.get('api_key') or os.getenv("OPENAI_API_KEY")
+    ai_base_url = ai_config.get('base_url') or os.getenv("OPENAI_BASE_URL")
+    ai_model = ai_config.get('model') or os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
     
     if not token or not username:
         return jsonify({"error": "Missing token or username"}), 400
+
+    if not gitea_url:
+        return jsonify({"error": "Missing Gitea URL"}), 400
 
     now = datetime.now()
     
@@ -53,10 +64,9 @@ def generate():
     
     try:
         # 1. Get Commits
-        # Note: We rely on the server's GITEA_URL, but use the user's Token/Username
         commits = gitea_summary.get_activity_report(
             since_date=since_date,
-            gitea_url=GITEA_URL,
+            gitea_url=gitea_url,
             token=token,
             username=username
         )
@@ -65,8 +75,14 @@ def generate():
              return jsonify({"summary": f"--- {username} 在此时段没有提交记录且无手动补充 ---", "commits": []})
 
         # 2. Generate AI Summary
-        # Uses server's OpenAI config
-        summary = gitea_summary.generate_ai_summary(commits, report_type=report_label, manual_input=manual_input)
+        summary = gitea_summary.generate_ai_summary(
+            commits,
+            report_type=report_label,
+            manual_input=manual_input,
+            api_key=ai_api_key,
+            base_url=ai_base_url,
+            model=ai_model
+        )
         
         if not summary:
             summary = "AI Summary generation failed or API Key not configured."

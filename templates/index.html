@@ -8,14 +8,16 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; background-color: #f4f6f8; color: #333; }
         .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         h1 { margin-top: 0; color: #2c3e50; }
+        h2 { font-size: 1.1rem; color: #2c3e50; margin: 1.5rem 0 0.75rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
         .form-group { margin-bottom: 1rem; }
         label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        .hint { font-weight: normal; font-size: 0.85rem; color: #888; }
         input[type="text"], input[type="password"] { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 1rem; }
         button { background-color: #3498db; color: white; border: none; padding: 0.75rem 1.5rem; font-size: 1rem; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
         button:hover { background-color: #2980b9; }
         button:disabled { background-color: #95a5a6; cursor: not-allowed; }
         #output-area { margin-top: 2rem; display: none; }
-        textarea { width: 100%; height: 300px; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9rem; margin-bottom: 1rem; resize: vertical; }
+        textarea { width: 100%; height: 300px; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9rem; margin-bottom: 1rem; resize: vertical; box-sizing: border-box; }
         .btn-secondary { background-color: #2ecc71; }
         .btn-secondary:hover { background-color: #27ae60; }
         .loader { display: none; margin-left: 10px; font-size: 0.9rem; color: #666; }
@@ -23,6 +25,13 @@
         .error-message h3 { margin: 0 0 0.5rem 0; font-size: 1rem; }
         .error-message p { margin: 0; font-size: 0.9rem; }
         .error-icon { margin-right: 0.5rem; }
+        /* 折叠配置区 */
+        .config-toggle { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: #3498db; font-size: 0.95rem; margin-bottom: 1rem; user-select: none; }
+        .config-toggle:hover { text-decoration: underline; }
+        .config-panel { display: none; background: #f9fafb; border: 1px solid #e8e8e8; border-radius: 6px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+        .config-panel.open { display: block; }
+        .config-arrow { transition: transform 0.2s; display: inline-block; }
+        .config-arrow.open { transform: rotate(90deg); }
     </style>
 </head>
 <body>
@@ -34,16 +43,43 @@
             <p id="error-text"></p>
         </div>
 
-        <div class="form-group">
-            <label for="username">Gitea 用户名</label>
-            <input type="text" id="username" placeholder="输入用户名" onchange="saveToLocal('giteaUsername', this.value)">
+        <!-- 配置区（可折叠） -->
+        <div class="config-toggle" onclick="toggleConfig()">
+            <span id="config-arrow" class="config-arrow">▶</span>
+            <span>⚙️ 配置（Gitea & AI）</span>
+        </div>
+        <div id="config-panel" class="config-panel">
+            <h2>Gitea 配置</h2>
+            <div class="form-group">
+                <label for="gitea_url">Gitea 地址</label>
+                <input type="text" id="gitea_url" placeholder="https://git.example.com" onchange="saveToLocal('giteaUrl', this.value)">
+            </div>
+            <div class="form-group">
+                <label for="username">Gitea 用户名</label>
+                <input type="text" id="username" placeholder="输入用户名" onchange="saveToLocal('giteaUsername', this.value)">
+            </div>
+            <div class="form-group">
+                <label for="token">Gitea Token</label>
+                <input type="password" id="token" placeholder="Personal Access Token" onchange="saveToLocal('giteaToken', this.value)">
+            </div>
+
+            <h2>AI 配置 <span class="hint">（须为 OpenAI 兼容格式）</span></h2>
+            <div class="form-group">
+                <label for="ai_api_key">API Key</label>
+                <input type="password" id="ai_api_key" placeholder="sk-..." onchange="saveToLocal('aiApiKey', this.value)">
+            </div>
+            <div class="form-group">
+                <label for="ai_base_url">Base URL <span class="hint">（OpenAI 兼容端点，如 https://api.deepseek.com/v1）</span></label>
+                <input type="text" id="ai_base_url" placeholder="https://api.openai.com/v1" onchange="saveToLocal('aiBaseUrl', this.value)">
+            </div>
+            <div class="form-group">
+                <label for="ai_model">模型名称</label>
+                <input type="text" id="ai_model" placeholder="deepseek-chat / gpt-3.5-turbo" onchange="saveToLocal('aiModel', this.value)">
+            </div>
         </div>
 
-        <div class="form-group">
-            <label for="token">Gitea Token</label>
-            <input type="password" id="token" placeholder="输入 Personal Access Token" onchange="saveToLocal('giteaToken', this.value)">
-        </div>
-
+        <!-- 日报生成区 -->
+        <h2>生成日报</h2>
         <div class="form-group">
             <label>报告类型</label>
             <div style="display: flex; gap: 20px; margin-top: 5px;">
@@ -76,22 +112,29 @@
             localStorage.setItem(key, value);
         }
 
-        // 页面加载时恢复保存的输入
+        function toggleConfig() {
+            const panel = document.getElementById('config-panel');
+            const arrow = document.getElementById('config-arrow');
+            panel.classList.toggle('open');
+            arrow.classList.toggle('open');
+        }
+
+        // 页面加载时恢复保存的配置
         window.addEventListener('DOMContentLoaded', function() {
-            const savedUsername = localStorage.getItem('giteaUsername');
-            const savedToken = localStorage.getItem('giteaToken');
-            const savedManualInput = localStorage.getItem('giteaManualInput');
+            const fields = {
+                'giteaUrl': 'gitea_url',
+                'giteaUsername': 'username',
+                'giteaToken': 'token',
+                'aiApiKey': 'ai_api_key',
+                'aiBaseUrl': 'ai_base_url',
+                'aiModel': 'ai_model',
+                'giteaManualInput': 'manual_input',
+            };
+            for (const [storageKey, elId] of Object.entries(fields)) {
+                const val = localStorage.getItem(storageKey);
+                if (val) document.getElementById(elId).value = val;
+            }
             const savedReportType = localStorage.getItem('giteaReportType');
-            
-            if (savedUsername) {
-                document.getElementById('username').value = savedUsername;
-            }
-            if (savedToken) {
-                document.getElementById('token').value = savedToken;
-            }
-            if (savedManualInput) {
-                document.getElementById('manual_input').value = savedManualInput;
-            }
             if (savedReportType) {
                 const radio = document.querySelector(`input[name="report_type"][value="${savedReportType}"]`);
                 if (radio) radio.checked = true;
@@ -99,8 +142,12 @@
         });
 
         async function generateReport() {
+            const giteaUrl = document.getElementById('gitea_url').value.trim();
             const username = document.getElementById('username').value.trim();
             const token = document.getElementById('token').value.trim();
+            const aiApiKey = document.getElementById('ai_api_key').value.trim();
+            const aiBaseUrl = document.getElementById('ai_base_url').value.trim();
+            const aiModel = document.getElementById('ai_model').value.trim();
             const manualInput = document.getElementById('manual_input').value.trim();
             const reportType = document.querySelector('input[name="report_type"]:checked').value;
             const btn = document.getElementById('generateBtn');
@@ -110,15 +157,31 @@
             const errorMessage = document.getElementById('error-message');
             const errorText = document.getElementById('error-text');
 
-            if (!username || !token) {
-                errorText.textContent = '请填写用户名和Token';
+            // 校验必填项
+            const missing = [];
+            if (!giteaUrl) missing.push('Gitea 地址');
+            if (!username) missing.push('用户名');
+            if (!token) missing.push('Token');
+            if (missing.length) {
+                errorText.textContent = '请填写: ' + missing.join('、') + '（在配置区填写）';
                 errorMessage.style.display = 'block';
                 return;
             }
 
-            // 再次确保保存最新的输入
+            // AI 配置至少要有 API Key
+            if (!aiApiKey) {
+                errorText.textContent = '请在配置区填写 AI API Key';
+                errorMessage.style.display = 'block';
+                return;
+            }
+
+            // 保存最新输入
+            saveToLocal('giteaUrl', giteaUrl);
             saveToLocal('giteaUsername', username);
             saveToLocal('giteaToken', token);
+            saveToLocal('aiApiKey', aiApiKey);
+            saveToLocal('aiBaseUrl', aiBaseUrl);
+            saveToLocal('aiModel', aiModel);
             saveToLocal('giteaManualInput', manualInput);
             saveToLocal('giteaReportType', reportType);
 
@@ -133,7 +196,18 @@
                 const response = await fetch('/api/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, token, manual_input: manualInput, report_type: reportType })
+                    body: JSON.stringify({
+                        gitea_url: giteaUrl,
+                        username,
+                        token,
+                        manual_input: manualInput,
+                        report_type: reportType,
+                        ai_config: {
+                            api_key: aiApiKey,
+                            base_url: aiBaseUrl,
+                            model: aiModel
+                        }
+                    })
                 });
 
                 const data = await response.json();
@@ -160,7 +234,7 @@
             const copyText = document.getElementById("result");
             copyText.select();
             copyText.setSelectionRange(0, 99999); // For mobile devices
-            
+
             try {
                 navigator.clipboard.writeText(copyText.value).then(() => {
                     alert("已复制到剪贴板!");
