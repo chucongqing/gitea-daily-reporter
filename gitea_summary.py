@@ -175,17 +175,12 @@ def get_activity_report(since_date, gitea_url=GITEA_URL, token=TOKEN, username=U
 
     return report_data
 
-def generate_ai_summary(commits_data, report_type="日报", manual_input="", api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL, model=OPENAI_MODEL):
-    if not api_key:
-        return None
+def build_prompt(commits_data, report_type="日报", manual_input=""):
+    """构造喂给 AI 的完整 prompt 文本。
 
-    print(f"\n🤖 正在请求 AI 生成{report_type}总结...")
-
-    client = OpenAI(
-        api_key=api_key,
-        base_url=base_url
-    )
-
+    这段文本既用于 API 调用，也用于"复制给网页版 AI"的场景，
+    保证两种方式喂给 AI 的内容完全一致。
+    """
     # 按活动类型分组，让 AI 清楚区分代码提交 / Issue / PR / 评论
     type_groups = {
         "commit": "代码提交",
@@ -233,6 +228,21 @@ Gitea 活动记录：
 
 请生成一份格式美观、内容充实的{report_type}。
 """
+    return prompt
+
+
+def generate_ai_summary(commits_data, report_type="日报", manual_input="", api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL, model=OPENAI_MODEL):
+    if not api_key:
+        return None
+
+    print(f"\n🤖 正在请求 AI 生成{report_type}总结...")
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url=base_url
+    )
+
+    prompt = build_prompt(commits_data, report_type, manual_input)
 
     try:
         response = client.chat.completions.create(
