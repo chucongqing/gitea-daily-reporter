@@ -8,7 +8,7 @@ COPY requirements.txt .
 
 # 3. 安装依赖
 # 只要 requirements.txt 没变，Docker 就会跳过这一步，直接使用缓存
-RUN pip install --proxy http://192.168.3.80:38201 --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 4. 最后再拷贝剩下的源代码
 # 即使代码变了，也不会影响上面已经安装好的依赖层
