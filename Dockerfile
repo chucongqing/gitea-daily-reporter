@@ -3,7 +3,7 @@
 ARG PIP_PROXY=
 
 # 1. 使用官方镜像
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
