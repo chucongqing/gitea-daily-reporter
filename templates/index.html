@@ -16,10 +16,12 @@
         button { background-color: #3498db; color: white; border: none; padding: 0.75rem 1.5rem; font-size: 1rem; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
         button:hover { background-color: #2980b9; }
         button:disabled { background-color: #95a5a6; cursor: not-allowed; }
-        #output-area { margin-top: 2rem; display: none; }
-        textarea { width: 100%; height: 300px; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9rem; margin-bottom: 1rem; resize: vertical; box-sizing: border-box; }
+        .output-area { margin-top: 1.5rem; display: none; }
+        textarea { width: 100%; height: 300px; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9rem; margin-bottom: 0.75rem; resize: vertical; box-sizing: border-box; }
         .btn-secondary { background-color: #2ecc71; }
         .btn-secondary:hover { background-color: #27ae60; }
+        .btn-copy { background-color: #95a5a6; padding: 0.5rem 1rem; font-size: 0.9rem; }
+        .btn-copy:hover { background-color: #7f8c8d; }
         .loader { display: none; margin-left: 10px; font-size: 0.9rem; color: #666; }
         .error-message { display: none; background-color: #fee; color: #c33; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; border-left: 4px solid #c33; }
         .error-message h3 { margin: 0 0 0.5rem 0; font-size: 1rem; }
@@ -32,6 +34,9 @@
         .config-panel.open { display: block; }
         .config-arrow { transition: transform 0.2s; display: inline-block; }
         .config-arrow.open { transform: rotate(90deg); }
+        /* 输出区标题行 + 复制按钮 */
+        .output-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+        .output-header label { margin: 0; }
     </style>
 </head>
 <body>
@@ -99,18 +104,30 @@
 
         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <button id="generateBtn" onclick="generateReport()">生成日报</button>
-            <button id="copyPromptBtn" class="btn-secondary" onclick="copyPromptToClipboard()">📋 复制提示词给网页版 AI</button>
-            <span id="loader" class="loader">⏳ 正在获取数据并生成 AI 总结...</span>
+            <button id="copyPromptBtn" class="btn-secondary" onclick="generatePrompt()">生成数据和提示词给网页版AI</button>
+            <span id="loader" class="loader">⏳ 正在获取数据...</span>
         </div>
         <p class="hint" style="margin-top: 0.5rem;">
-            「复制提示词」会把你的 Gitea 活动数据和生成日报的要求拼成一段文本，
+            「生成数据和提示词」会把你的 Gitea 活动数据和生成日报的要求拼成一段文本，
             复制后可直接粘贴到 ChatGPT / DeepSeek / Kimi 等免费网页版 AI 的对话框里生成日报，无需 API Key。
         </p>
 
-        <div id="output-area">
-            <label for="result">生成结果</label>
+        <!-- 日报结果区 -->
+        <div id="output-area" class="output-area">
+            <div class="output-header">
+                <label for="result">生成结果</label>
+                <button class="btn-copy" onclick="copyText('result', this)">📋 复制</button>
+            </div>
             <textarea id="result" readonly></textarea>
-            <button class="btn-secondary" onclick="copyToClipboard()">📋 复制到剪贴板</button>
+        </div>
+
+        <!-- 提示词结果区 -->
+        <div id="prompt-area" class="output-area">
+            <div class="output-header">
+                <label for="prompt-result">提示词（复制后粘贴给网页版 AI）</label>
+                <button class="btn-copy" onclick="copyText('prompt-result', this)">📋 复制</button>
+            </div>
+            <textarea id="prompt-result" readonly></textarea>
         </div>
     </div>
 
@@ -148,6 +165,53 @@
             }
         });
 
+        // 通用复制函数，兼容 HTTP（非 HTTPS）环境
+        // navigator.clipboard 要求安全上下文(HTTPS/localhost)，局域网 HTTP 访问会失败，
+        // 所以用临时 textarea + execCommand('copy') 兜底。
+        async function copyText(textareaId, btn) {
+            const text = document.getElementById(textareaId).value;
+            if (!text) { alert('没有可复制的内容'); return; }
+
+            try {
+                // 优先用现代 Clipboard API
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(text);
+                    flashCopied(btn);
+                    return;
+                }
+            } catch (e) { /* 落入兜底 */ }
+
+            // 兜底：临时 textarea + execCommand
+            const tmp = document.createElement('textarea');
+            tmp.value = text;
+            tmp.style.position = 'fixed';
+            tmp.style.opacity = '0';
+            document.body.appendChild(tmp);
+            tmp.select();
+            try {
+                document.execCommand('copy');
+                flashCopied(btn);
+            } catch (e) {
+                alert('复制失败，请手动选择文本框内容复制');
+            }
+            document.body.removeChild(tmp);
+        }
+
+        function flashCopied(btn) {
+            const orig = btn.textContent;
+            btn.textContent = '✅ 已复制';
+            setTimeout(() => { btn.textContent = orig; }, 1500);
+        }
+
+        function showLoader(msg) {
+            const loader = document.getElementById('loader');
+            loader.textContent = '⏳ ' + msg;
+            loader.style.display = 'inline';
+        }
+        function hideLoader() {
+            document.getElementById('loader').style.display = 'none';
+        }
+
         async function generateReport() {
             const giteaUrl = document.getElementById('gitea_url').value.trim();
             const username = document.getElementById('username').value.trim();
@@ -158,7 +222,6 @@
             const manualInput = document.getElementById('manual_input').value.trim();
             const reportType = document.querySelector('input[name="report_type"]:checked').value;
             const btn = document.getElementById('generateBtn');
-            const loader = document.getElementById('loader');
             const outputArea = document.getElementById('output-area');
             const resultBox = document.getElementById('result');
             const errorMessage = document.getElementById('error-message');
@@ -194,7 +257,7 @@
 
             // UI Loading State
             btn.disabled = true;
-            loader.style.display = 'inline';
+            showLoader('正在获取数据并生成 AI 总结...');
             outputArea.style.display = 'none';
             errorMessage.style.display = 'none';
             resultBox.value = '';
@@ -233,17 +296,19 @@
                 errorMessage.style.display = 'block';
             } finally {
                 btn.disabled = false;
-                loader.style.display = 'none';
+                hideLoader();
             }
         }
 
-        async function copyPromptToClipboard() {
+        async function generatePrompt() {
             const giteaUrl = document.getElementById('gitea_url').value.trim();
             const username = document.getElementById('username').value.trim();
             const token = document.getElementById('token').value.trim();
             const manualInput = document.getElementById('manual_input').value.trim();
             const reportType = document.querySelector('input[name="report_type"]:checked').value;
             const btn = document.getElementById('copyPromptBtn');
+            const promptArea = document.getElementById('prompt-area');
+            const promptResult = document.getElementById('prompt-result');
             const errorMessage = document.getElementById('error-message');
             const errorText = document.getElementById('error-text');
 
@@ -259,7 +324,10 @@
             }
 
             btn.disabled = true;
+            showLoader('正在获取 Gitea 数据...');
             errorMessage.style.display = 'none';
+            promptArea.style.display = 'none';
+            promptResult.value = '';
 
             try {
                 const response = await fetch('/api/prompt', {
@@ -281,29 +349,15 @@
                     return;
                 }
 
-                const promptText = data.prompt;
-                await navigator.clipboard.writeText(promptText);
-                alert('已复制！可直接粘贴到网页版 AI 对话框生成日报。');
+                // 显示生成的提示词，用户可复制
+                promptResult.value = data.prompt;
+                promptArea.style.display = 'block';
             } catch (err) {
-                errorText.textContent = '复制失败，请检查网络或浏览器权限';
+                errorText.textContent = '网络请求失败，请检查网络连接或稍后再试';
                 errorMessage.style.display = 'block';
             } finally {
                 btn.disabled = false;
-            }
-        }
-
-        function copyToClipboard() {
-            const copyText = document.getElementById("result");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999); // For mobile devices
-
-            try {
-                navigator.clipboard.writeText(copyText.value).then(() => {
-                    alert("已复制到剪贴板!");
-                });
-            } catch (err) {
-                document.execCommand('copy');
-                alert("已复制到剪贴板!");
+                hideLoader();
             }
         }
     </script>
